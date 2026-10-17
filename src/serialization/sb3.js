@@ -174,6 +174,57 @@ const getOperatorItemCount = block => {
     return 2;
 };
 
+const OPERATOR_SHADOWS = {
+    NUM: ['math_number', 'NUM'],
+    STRING: ['text', 'TEXT']
+};
+
+const repairOperatorInputs = function (blocks, id, block) {
+    const prefix = EXTENDABLE_OPERATORS[block.opcode];
+    const count = getOperatorItemCount(block);
+    const exists = blockId => !!blockId && !!blocks[blockId] && !Array.isArray(blocks[blockId]);
+    const inputs = Object.assign({}, block.inputs);
+    let changed = false;
+    for (const name of Object.keys(inputs)) {
+        if (!name.startsWith(prefix) || !(Number(name.slice(prefix.length)) > count)) continue;
+        const input = inputs[name];
+        if (exists(input.block) && input.block !== input.shadow) continue;
+        if (exists(input.shadow) && blocks[input.shadow].shadow) delete blocks[input.shadow];
+        delete inputs[name];
+        changed = true;
+    }
+    const shadowType = OPERATOR_SHADOWS[prefix];
+    for (let i = 1; i <= count; i++) {
+        const name = `${prefix}${i}`;
+        const input = inputs[name];
+        let shadow = input && exists(input.shadow) ? input.shadow : null;
+        let target = input && exists(input.block) ? input.block : shadow;
+        if (!target && shadowType) {
+            shadow = uid();
+            blocks[shadow] = {
+                id: shadow,
+                opcode: shadowType[0],
+                inputs: {},
+                fields: {[shadowType[1]]: {name: shadowType[1], value: ''}},
+                next: null,
+                topLevel: false,
+                parent: id,
+                shadow: true
+            };
+            target = shadow;
+        }
+        if (input && input.block === target && input.shadow === shadow) continue;
+        if (target) {
+            inputs[name] = {name, block: target, shadow};
+            changed = true;
+        } else if (input) {
+            delete inputs[name];
+            changed = true;
+        }
+    }
+    return changed ? inputs : null;
+};
+
 const makeItemCountMutation = count => ({
     tagName: 'mutation',
     children: [],
@@ -297,6 +348,8 @@ const expandOperators = function (blocks, usedConstants) {
         if (!orig.inputs) continue;
         const prefix = EXTENDABLE_OPERATORS[orig.opcode];
         if (!prefix) continue;
+        const repaired = repairOperatorInputs(result, id, orig);
+        if (repaired) cloneBlock(id).inputs = repaired;
         const count = getOperatorItemCount(orig);
         if (count <= 2) {
             if (orig.mutation && orig.mutation.itemcount) {
@@ -1546,6 +1599,12 @@ const parseScratchObject = function (object, runtime, extensions, zip, assets) {
         if (runtime.extendableOperators) {
             collapseOperators(object.blocks);
         }
+        for (const blockId of Object.keys(object.blocks)) {
+            const block = object.blocks[blockId];
+            if (!block || Array.isArray(block) || !block.inputs || !EXTENDABLE_OPERATORS[block.opcode]) continue;
+            const repaired = repairOperatorInputs(object.blocks, blockId, block);
+            if (repaired) block.inputs = repaired;
+        }
         // Take a second pass to create objects and add extensions
         for (const blockId in object.blocks) {
             if (!Object.prototype.hasOwnProperty.call(object.blocks, blockId)) continue;
@@ -1717,8 +1776,6 @@ const deserializeMonitor = function (monitorData, runtime, targets, extensions) 
     const yOffset = (runtime.stageHeight - 360) / 2;
     monitorData.x += xOffset;
     monitorData.y += yOffset;
-    monitorData.x = MathUtil.clamp(monitorData.x, 0, runtime.stageWidth);
-    monitorData.y = MathUtil.clamp(monitorData.y, 0, runtime.stageHeight);
 
     // If the serialized monitor has spriteName defined, look up the sprite
     // by name in the given list of targets and update the monitor's targetId
