@@ -15,7 +15,10 @@ const defaults = {
     faceSensing: 'https://extensions.turbowarp.org/lab/face-sensing.js',
 
     // Video Sprites - https://lab.scratch.mit.edu/videosprites/
-    videoSprites: 'https://extensions.turbowarp.org/lab/video-sprites.js'
+    videoSprites: 'https://extensions.turbowarp.org/lab/video-sprites.js',
+
+    // DANV WOW Economy - https://turboshare.org.uk/users/StudioDANV
+    danvWowEconomy: '/static/turboshare-extensions/WOWEconomy.js'
 };
 
 module.exports = defaults;
